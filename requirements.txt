@@ -1,0 +1,6 @@
+Flask>=3.0,<4
+requests>=2.31,<3
+phonenumbers>=8.13,<9
+dnspython>=2.6,<3
+python-whois>=0.9,<1
+pytest>=8,<9
