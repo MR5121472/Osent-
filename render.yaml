@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: faizan-osint-suite
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+  - type: pserv
+    name: faizan-osint-db
+    runtime: postgres
+    plan: free
+    databaseName: faizan_osint
+    user: faizan
