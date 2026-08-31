@@ -13,7 +13,7 @@ db_url=os.environ.get('DATABASE_URL','sqlite:///faizan_osint.db').replace('postg
 app.config['SQLALCHEMY_DATABASE_URI']=db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=False
 db=SQLAlchemy(app)
-
+ 
 class User(db.Model):
  id=db.Column(db.Integer,primary_key=True); username=db.Column(db.String(80),unique=True,nullable=False); password_hash=db.Column(db.String(255),nullable=False); role=db.Column(db.String(30),default='investigator'); created_at=db.Column(db.DateTime,default=lambda:datetime.now(timezone.utc))
 class Case(db.Model):
@@ -33,7 +33,43 @@ def login_required(f):
   if 'uid' not in session:return jsonify(error='Authentication required'),401
   return f(*a,**k)
  return w
-
+def username(v):
+    u = v.strip().lstrip('@')
+    r = {'input': u, 'timestamp': ts(), 'profiles': []}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    for p, t in PLATFORMS.items():
+        url = t.format(u=u)
+        try:
+            x = requests.get(url, timeout=6, allow_redirects=True, headers=headers)
+            
+            # Advanced validation to avoid false positives (200 OK custom error pages)
+            is_reachable = False
+            if 200 <= x.status_code < 400:
+                body_text = x.text.lower()
+                # Common negative keywords for deleted/non-existent profiles
+                not_found_keywords = [
+                    'not found', 'doesn\'t exist', 'page not available', 
+                    'account has been suspended', 'user doesn\'t exist',
+                    'this page isn\'t available', 'looking for something?'
+                ]
+                if not any(kw in body_text for kw in not_found_keywords):
+                    is_reachable = True
+            
+            r['profiles'].append({
+                'platform': p, 
+                'url': url, 
+                'status': x.status_code, 
+                'reachable': is_reachable
+            })
+        except Exception:
+            r['profiles'].append({'platform': p, 'url': url, 'status': 'network_error', 'reachable': False})
+            
+    r['limitation'] = 'Verified via content-filtering to reduce false positives; match is a lead, not proof.'
+    return r
+ 
 def phone(v):
  r={'input':v,'timestamp':ts()}
  try:
@@ -60,13 +96,7 @@ def domain(v):
   import whois;w=whois.whois(v);r['whois']={'registrar':w.registrar,'creation_date':str(w.creation_date),'expiration_date':str(w.expiration_date),'name_servers':list(w.name_servers or [])}
  except Exception:r['whois']='Unavailable'
  return r
-def username(v):
- u=v.strip().lstrip('@');r={'input':u,'timestamp':ts(),'profiles':[]}
- for p,t in PLATFORMS.items():
-  url=t.format(u=u)
-  try:x=requests.get(url,timeout=6,allow_redirects=True,headers={'User-Agent':'Faizan-OSINT/4.0'});r['profiles'].append({'platform':p,'url':url,'status':x.status_code,'reachable':200<=x.status_code<400})
-  except Exception:r['profiles'].append({'platform':p,'url':url,'status':'network_error'})
- r['limitation']='A username match is a lead, not identity proof.';return r
+
 def investigate(k,v):return {'phone':phone,'ip':ipinfo,'domain':domain,'username':username}[k](v)
 
 @app.before_request
